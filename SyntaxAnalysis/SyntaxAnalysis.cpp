@@ -3,6 +3,8 @@
 #include <list>
 #include <map>
 #include <algorithm> 
+#include <fstream>
+#include <sstream>
 #include <stdlib.h>
 #include <stack>
 using namespace std;
@@ -28,8 +30,124 @@ string gotoTable[23][7];
 stack<int> stateStack;
 //输入栈
 stack<string> inputStack;
+//当前值栈
+stack<string> valueStack;
 //当前输入
 string inputbuf;
+//当前临时变量值
+int tempIndex = 1;
+//当前地址
+int tempAddress = 0;
+//符号表文件
+ofstream characterTableFile;
+//中间代码文件
+ofstream midcodeFile;
+
+/**
+ * 数字转为字符串
+ */
+string numToStr(double  i){
+    stringstream ss;
+    ss<<i;
+    return ss.str();
+}
+
+/**
+ * 存储读到的值
+ */
+void storeValue(){
+    int valueBegin = inputbuf.find_first_of(',');
+    int valueEnd = inputbuf.find_first_of(')');
+    string valueStr = inputbuf.substr(valueBegin + 1,valueEnd - valueBegin - 1);
+    if(valueStr.compare(";") != 0){
+        valueStack.push(valueStr);
+        cout << "value:   " << valueBegin<<"   " << valueEnd << "   "<< valueStr << endl;
+    }
+}
+
+/**
+ * 存储四则运算的三地址码
+ */
+void storeAddressCodeOfCal(){
+    //读取数据
+    string endNumber = valueStack.top();
+    valueStack.pop();
+    string operatorStr = valueStack.top();
+    valueStack.pop();
+    string startNumber = valueStack.top();
+    valueStack.pop();
+
+    string tempValueStr = "t" + numToStr(tempIndex);
+    tempIndex++;
+    midcodeFile << operatorStr << "   " <<  startNumber << "   ";
+    midcodeFile << endNumber << "   " << tempValueStr << endl;
+    valueStack.push(tempValueStr);
+}
+
+/**
+ * 存储赋值语句和声明语句的三地址码
+ */
+void storeAddressCodeOfDefineOrAssign(string command){
+    string tempValueStr = "t" + numToStr(tempIndex);
+    tempIndex++;
+    midcodeFile << command << "   " <<  valueStack.top() << "   ";
+    if(command.compare("assign") == 0){
+        valueStack.pop();
+        valueStack.pop();
+        midcodeFile << "NONE" << "   " << valueStack.top() << endl;
+    }
+    else{
+        midcodeFile << "NONE" << "   " << tempValueStr << endl;
+    }
+    valueStack.pop();
+    valueStack.push(tempValueStr);
+}
+/**
+ * 输出符号表与三地址码
+ */
+void outputAdressCodeAndCharacterTable(string s){
+    if(s.compare("S -> DEFINE") == 0){
+        storeAddressCodeOfDefineOrAssign("define");
+    }
+    else if(s.compare("S -> ASSIGN") == 0){
+        storeAddressCodeOfDefineOrAssign("assign");
+    }
+    else if(s.compare("DEFINE -> KEYWORD ID") == 0){
+        string id = valueStack.top();
+        characterTableFile << valueStack.top() << "   " ;
+        valueStack.pop();
+        characterTableFile << valueStack.top() << "   " << tempAddress << endl;
+        valueStack.pop();
+        valueStack.push(id);
+        tempAddress += 4;
+    }
+    else if(s.compare("ASSIGN -> ID = EXP") == 0){
+    }
+    else if(s.compare("EXP -> ITEM") == 0){
+    }
+    else if(s.compare("EXP -> ITEM + EXP") == 0){
+        storeAddressCodeOfCal();
+    }
+    else if(s.compare("EXP -> ITEM - EXP") == 0){
+        storeAddressCodeOfCal();
+    }
+    else if(s.compare("ITEM -> FACTOR") == 0){
+    }
+    else if(s.compare("ITEM -> FACTOR * ITEM") == 0){
+        storeAddressCodeOfCal();
+    }
+    else if(s.compare("ITEM -> FACTOR / ITEM") == 0){
+        storeAddressCodeOfCal();
+    }
+    else if(s.compare("FACTOR -> ID") == 0){
+    }
+    else if(s.compare("FACTOR -> NUM") == 0){
+    }
+    else if(s.compare("KEYWORD -> int") == 0){
+    }
+    else if(s.compare("KEYWORD -> float") == 0){
+    }
+}
 
 /**
  * 根据输入的字符串得到对应的状态
@@ -128,6 +246,7 @@ int getRightNumber(string s){
 void analyse(int readFlag){
     if(readFlag == 0){
         getline(cin,inputbuf);
+        storeValue();
     }
     //如果是状态转移(开始处为S)
     if(actionTable[stateStack.top()][getInputNumber(inputbuf)].find("S") == 0){
@@ -145,6 +264,7 @@ void analyse(int readFlag){
         string stateStr = actionTable[stateStack.top()][getInputNumber(inputbuf)].substr(1); 
         cout << stateStr << endl;
         int number = getRightNumber(stateStr); 
+        outputAdressCodeAndCharacterTable(stateStr);
         while(number != 0){
             //输入栈和状态栈弹出一个符号
             stateStack.pop();
@@ -202,6 +322,10 @@ void initTables(){
 }
 
 int main(){
+    //初始化中间代码文件符
+    midcodeFile.open("C:/Users/SmallYe/Desktop/midcode.txt",ios::out);
+    //初始化符号表文件符
+    characterTableFile.open("C:/Users/SmallYe/Desktop/characterTable.txt",ios::out);
     //将标准输入重定向到table.csv文件
     freopen("C:/Users/SmallYe/Desktop/tables.csv", "r", stdin);
     initTables();
@@ -214,6 +338,7 @@ int main(){
     inputStack.push("#");
     getline(cin,inputbuf);
     while(inputbuf.size() != 0){
+        storeValue();
         analyse(1);
         getline(cin,inputbuf);
     }
